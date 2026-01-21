@@ -192,6 +192,24 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<List<Order>> getOrdersForDay(DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+
+    return (select(orders)
+      ..where((o) => o.createdAt.isBetweenValues(start, end)))
+        .get();
+  }
+
+  Future<List<Order>> getOrdersForMonth(DateTime month) {
+    final start = DateTime(month.year, month.month);
+    final end = DateTime(month.year, month.month + 1);
+
+    return (select(orders)
+      ..where((o) => o.createdAt.isBetweenValues(start, end)))
+        .get();
+  }
+
 
 }
 

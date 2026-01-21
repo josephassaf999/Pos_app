@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../core/database/app_database.dart';
-import '../sales/sales_screen.dart';
-import '../services/services_screen.dart';
-import '../reports/reports_screen.dart';
+import 'package:pos/core/database/app_database.dart';
+import 'package:pos/features/reports/reports_screen.dart';
+import 'package:pos/features/sales/sales_screen.dart';
+import 'package:pos/features/services/services_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AppDatabase db;

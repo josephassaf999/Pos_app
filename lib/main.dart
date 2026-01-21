@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'core/database/app_database.dart';
+import 'package:pos/core/database/app_database.dart';
 import 'features/home/home_screen.dart';
 
 

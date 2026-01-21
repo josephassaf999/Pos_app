@@ -1,7 +1,15 @@
+import 'dart:io';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import '../../core/database/app_database.dart';
-import 'daily_report.dart';
-import 'monthly_report.dart';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pos/features/reports/daily_report.dart';
+import 'package:pos/features/reports/monthly_report.dart';
+import 'package:share_plus/share_plus.dart';
+
+import 'package:pos/core/database/app_database.dart';
+import 'package:pos/core/export/csv_exporter.dart';
 
 class ReportsScreen extends StatefulWidget {
   final AppDatabase db;
@@ -28,6 +36,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
       setState(() => selectedDate = picked);
     }
   }
+
+  // ---------- UI helpers ----------
 
   Widget reportCard(String title, String value, {Color? color}) {
     return Card(
@@ -59,6 +69,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // ---------- CSV SAVE (NO PERMISSIONS) ----------
+
+  Future<void> exportCsv(String csvContent, String filename) async {
+    try {
+      final bytes = utf8.encode(csvContent);
+
+      if (kIsWeb) {
+        // Web handled elsewhere if needed
+        return;
+      }
+
+      if (Platform.isAndroid) {
+        final dir = await getExternalStorageDirectory();
+        if (dir == null) throw Exception('Storage unavailable');
+
+        final file = File('${dir.path}/$filename');
+        await file.writeAsBytes(bytes);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('CSV saved:\n${file.path}')),
+        );
+      }
+
+      if (Platform.isIOS) {
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/$filename');
+        await file.writeAsBytes(bytes);
+
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'text/csv')],
+          text: 'Sales report',
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to export CSV: $e')),
+      );
+    }
+  }
+
+  // ---------- Report Content ----------
+
   Widget buildReportContent({
     required String title,
     required double total,
@@ -79,17 +131,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           const SizedBox(height: 16),
 
-          reportCard(
-            'Total Sales',
-            '${total.toStringAsFixed(0)} \$',
-          ),
+          reportCard('Total Sales', '${total.toStringAsFixed(0)} \$'),
           const SizedBox(height: 12),
-
-          reportCard(
-            'Orders',
-            count.toString(),
-            color: Colors.blue,
-          ),
+          reportCard('Orders', count.toString(), color: Colors.blue),
           const SizedBox(height: 20),
 
           Row(
@@ -111,10 +155,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ],
           ),
+
+          const SizedBox(height: 24),
+
+          ElevatedButton.icon(
+            icon: const Icon(Icons.download, color: Colors.white),
+            label: const Text(
+              'Export CSV',
+              style: TextStyle(color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
+              ),
+            ),
+            onPressed: () async {
+              final exporter = CsvExporter(widget.db);
+
+              final csv = isMonthly
+                  ? await exporter.exportMonthly(selectedDate)
+                  : await exporter.exportDaily(selectedDate);
+
+              final filename = isMonthly
+                  ? 'monthly_${selectedDate.month}_${selectedDate.year}.csv'
+                  : 'daily_${selectedDate.day}_${selectedDate.month}_${selectedDate.year}.csv';
+
+              await exportCsv(csv, filename);
+            },
+          ),
         ],
       ),
     );
   }
+
+  // ---------- BUILD ----------
 
   @override
   Widget build(BuildContext context) {
@@ -134,125 +210,55 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: [
           const SizedBox(height: 12),
 
-          Expanded(
-            child: Column(
+          // Toggle
+          Container(
+            padding: const EdgeInsets.all(4),
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
               children: [
-                /// DAILY / MONTHLY PILL TOGGLE
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      /// DAILY BUTTON
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() => isMonthly = false),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: !isMonthly ? Colors.teal : Colors.transparent,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Daily',
-                              style: TextStyle(
-                                color: !isMonthly ? Colors.white : Colors.teal,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => isMonthly = false),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: !isMonthly ? Colors.teal : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Daily',
+                        style: TextStyle(
+                          color: !isMonthly ? Colors.white : Colors.teal,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-
-                      /// MONTHLY BUTTON
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() => isMonthly = true),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isMonthly ? Colors.teal : Colors.transparent,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Monthly',
-                              style: TextStyle(
-                                color: isMonthly ? Colors.white : Colors.teal,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-
-                const SizedBox(height: 12),
-
-                /// REPORT CONTENT WITH FADE ANIMATION
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    ),
-                    child: isMonthly
-                        ? StreamBuilder<MonthlyReport>(
-                      key: ValueKey('monthly-${selectedDate.month}-${selectedDate.year}'),
-                      stream: widget.db.watchMonthlyReport(selectedDate)
-                      as Stream<MonthlyReport>,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-
-                        final report = snapshot.data!;
-
-                        return buildReportContent(
-                          title: '${report.month.month}/${report.month.year}',
-                          total: report.total,
-                          count: report.ordersCount,
-                          cash: report.cashTotal,
-                          whish: report.whishTotal,
-                        );
-                      },
-                    )
-                        : StreamBuilder<DailyReport>(
-                      key: ValueKey('daily-${selectedDate.day}-${selectedDate.month}-${selectedDate.year}'),
-                      stream: widget.db.watchDailyReport(selectedDate)
-                      as Stream<DailyReport>,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-
-                        final report = snapshot.data!;
-
-                        return buildReportContent(
-                          title: '${report.date.day}/${report.date.month}/${report.date.year}',
-                          total: report.total,
-                          count: report.salesCount,
-                          cash: report.cashTotal,
-                          whish: report.whishTotal,
-                        );
-                      },
+                  child: GestureDetector(
+                    onTap: () => setState(() => isMonthly = true),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isMonthly ? Colors.teal : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Monthly',
+                        style: TextStyle(
+                          color: isMonthly ? Colors.white : Colors.teal,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -260,7 +266,52 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
 
+          const SizedBox(height: 12),
 
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: isMonthly
+                  ?StreamBuilder<MonthlyReport>(
+                key: ValueKey('monthly'),
+                stream: widget.db.watchMonthlyReport(selectedDate),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final report = snapshot.data!;
+                  return buildReportContent(
+                    title: '${report.month.month}/${report.month.year}',
+                    total: report.total,
+                    count: report.ordersCount,
+                    cash: report.cashTotal,
+                    whish: report.whishTotal,
+                  );
+                },
+              )
+
+                  : StreamBuilder<DailyReport>(
+                key: ValueKey('daily'),
+                stream: widget.db.watchDailyReport(selectedDate),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final report = snapshot.data!;
+                  return buildReportContent(
+                    title: '${report.date.day}/${report.date.month}/${report.date.year}',
+                    total: report.total,
+                    count: report.salesCount,
+                    cash: report.cashTotal,
+                    whish: report.whishTotal,
+                  );
+                },
+              )
+
+            ),
+          ),
         ],
       ),
     );

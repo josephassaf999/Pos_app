@@ -9,7 +9,7 @@ A modern **Flutter-based Point of Sale (POS) application** designed for barber s
 - **Sales Management**: Record and track all sales.
 - **Service Management**: Add, edit, and price services offered.
 - **Reports**: Generate reports to monitor performance.
-- **Local Database**: Uses a custom `AppDatabase` for offline storage.
+- **Local Database**: Uses a custom SQLite + Drift database for offline storage.
 - **Modern UI**: Clean design with Flutter Material 3 styling.
 - **Cross-platform**: Runs on Android, iOS, and potentially web/desktop.
 
